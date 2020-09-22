@@ -1,0 +1,4 @@
+A child process created via fork(2) inherits its parent's  umask.   The
+       umask is left unchanged by execve(2).
+write() writes !!!up to count bytes!!! from the buffer starting at buf to the
+       file referred to by the file descriptor fd.
