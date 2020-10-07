@@ -1,9 +1,6 @@
-all:	build run
-build: 	
-	g++ main.cpp -Wall -ggdb3 -o main
-run:	
-	#./main hamlet.txt > output.txt
-	./main
+all:	clear writer reader
+clear:
+	rm -f channel.fifo && pkill --signal KILL writer && pkill --signal KILL reader || true
 reader: reader.cpp
 	g++ reader.cpp -Wall -ggdb3 -o reader
 writer:	writer.cpp

@@ -1,4 +1,44 @@
 A child process created via fork(2) inherits its parent's  umask.   The
        umask is left unchanged by execve(2).
+
 write() writes !!!up to count bytes!!! from the buffer starting at buf to the
        file referred to by the file descriptor fd.
+
+A process can open a FIFO in nonblocking mode.  In this case, opening for
+       read-only  succeeds  even  if no one has opened on the write side yet and
+       opening for write-only fails with  ENXIO  (no  such  device  or  address)
+       unless the other end has already been opened.
+
+When  a  process  tries to write to a FIFO that is not opened for read on
+       the other side, the process is sent a SIGPIPE signal.
+
+If  all  file  descriptors referring to the write end of a pipe have been
+       closed, then an attempt to read(2) from the  pipe  will  see  end-of-file
+       (read(2)  will  return 0).  If all file descriptors referring to the read
+       end of a pipe have been closed, then a write(2) will cause a SIGPIPE sig‐
+       nal  to  be generated for the calling process.  If the calling process is
+       ignoring this signal, then write(2)  fails  with  the  error  EPIPE. 
+
+       https://it.wikireading.ru/1029 очень полезно
+
+---------------------------------------------------
+Размер PIPE-a (PIPE_SIZE) = 16 * PIPE_BUF !!! то есть целиком 
+       заполнить PIPE за один раз не выйдет
+---------------------------------------------------
+
+Пусть у нас один FIFO
+1) Если открыть оба в NON_BLOCK режиме, то при sleep-e writer-а труба может опустеть, и тогда
+       read сразу же вернёт -1 <- это плохо, тк непонятно из-за чего вернулся -1: то ли отключился
+       writer (kill -signal SIGKILL), то ли он просто стоит на паузе.
+
+       !!! ЗНАЧИТ НУЖНО СДЕЛАТЬ ЗАПРОС К WRITER-у, И ЕСЛИ ОН НЕ ОТВЕТИТ
+              ПРЕКРАТИТЬ ПЕРЕДАЧУ !!!
+              
+2) Если reader открыт без NON_BLOCK режима, то предыдущей проблемы не будет, но зато при SIGKILL-e 
+       writer-a reader окажется в deadlock-e. 
+
+       !!! ЗНАЧИТ READER НАДО С NON_BLOCK-ом !!!
+
+3) Ещё одно преимущество в копилку NON_BLOCK-a: пусть мы пишем в FIFO сообщениями размером
+       PIPE_BUF * 16, тогда при отсутствии NON_BLOCK writer будет ждать, пока освободится место, 
+       а значит если убить в этот момент reader, то возникнет deadlock.
