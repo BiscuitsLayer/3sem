@@ -9,39 +9,48 @@
 #include <errno.h>
 #include <limits.h>
 
-const int FILENAME_SIZE = 20;
+const int MAX_FILENAME_SIZE = 20;
+const int MAX_PID_SIZE = 10;
+const int MAX_STRING_SIZE = PIPE_BUF;
 
 int main () {
 
-    pid_t pid = getpid ();
-    char serviceName [FILENAME_SIZE];
-    sprintf (serviceName, "channel_%d.fifo", pid);
+    pid_t writerPid = getpid ();
+    char serviceName [MAX_FILENAME_SIZE];
+    sprintf (serviceName, "service_%d.fifo", writerPid);
+    char writerPidString [MAX_PID_SIZE];
+    sprintf (writerPidString, "%d", writerPid);
 
+    //  Прототип (пример) передаваемого сообщения
     char msg [PIPE_BUF];
     for (unsigned i = 0; i < PIPE_BUF; ++i)
         msg[i] = 'a' + rand() % 20;
     msg[PIPE_BUF - 1] = '\0';
 
+    //  WRITER создаёт свой service FIFO
     if (mkfifo (serviceName, 0777) == -1) {
         fprintf (stderr, "Error creating service fifo\n");
         exit (EXIT_FAILURE);
     }
 
+    //  WRITER открывает свой service FIFO
     int serviceReadfile = open (serviceName, O_RDONLY | O_NONBLOCK);
     if (serviceReadfile == -1) {
         fprintf (stderr, "Error opening service fifo\n");
         exit (EXIT_FAILURE);
     }
 
-    int openSuccededCount = 0;
-    int openSuccededPid = 0;
-
-    while (openSuccededCount == 0) {
-        if (read (serviceReadfile, &openSuccededPid, 4) == 1)
-            openSuccededCount++;
+    //  WRITER читает из service FIFO PID READER-a
+    char readerPidString [MAX_PID_SIZE];
+    int readChars = 0;
+    while (readChars == 0 || readChars == -1) {
+        readChars = read (serviceReadfile, readerPidString, MAX_PID_SIZE);
     }
 
-    int writefile = open ("channel.fifo", O_WRONLY | O_NONBLOCK);
+    //  WRITER открывает channel FIFO своего READER-a
+    char channelName [MAX_FILENAME_SIZE];
+    sprintf (channelName, "channel_%s.fifo", readerPidString);
+    int writefile = open (channelName, O_WRONLY | O_NONBLOCK);
     while (writefile == -1) {
         if (errno == ENXIO) {
             //  ENXIO <- никто не открыл FIFO для чтения
@@ -49,14 +58,26 @@ int main () {
             exit (EXIT_FAILURE);
         }
         //  EEXIST <- файл не существует
-        writefile = open ("channel.fifo", O_WRONLY | O_NONBLOCK);
+        writefile = open (channelName, O_WRONLY | O_NONBLOCK);
     }
-    //  В этот момент можно запустить второй writer, который будет печатать в ту же FIFO
-    //  Чтобы избежать такого, нужно отправить через второй FIFO в обратную сторону (write
-    //  конец NON_BLOCK) сообщение об успешном коннекте
-    sleep (5);
+
+    //  WRITER пишет в channel FIFO своего READER-a свой PID 
+    //  (отвечает согласием на их кандидатуру)
+    write (writefile, writerPidString, MAX_PID_SIZE);
+
     //
-    chmod ("channel.fifo", 0000);
+    /*
+        В этом месте WRITER должен принять от READER-a свой же PID, таким образом
+        READER подтвердит коннект со своей стороны. Если коннекта нет, то читаем
+        следующий PID из служебной очереди
+        (Но как, если там уже лежат другие PIDы...)
+    */
+    //
+
+    fprintf (stderr, "My reader's pid: %s", readerPidString);
+    sleep (100);
+    exit (EXIT_SUCCESS);
+
     char buf = '\0';
 
     fprintf (stdout, "INPUT WHEN READY TO START (WRITER)\n");
