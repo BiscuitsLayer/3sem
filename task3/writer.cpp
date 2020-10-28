@@ -17,8 +17,8 @@ int main () {
 
     pid_t writerPid = getpid ();
     char serviceName [MAX_FILENAME_SIZE];
-    sprintf (serviceName, "service_%d.fifo", writerPid);
-    char writerPidString [MAX_PID_SIZE];
+    sprintf (serviceName, "service.fifo");
+    char writerPidString [MAX_STRING_SIZE];
     sprintf (writerPidString, "%d", writerPid);
 
     //  Прототип (пример) передаваемого сообщения
@@ -29,8 +29,10 @@ int main () {
 
     //  WRITER создаёт свой service FIFO
     if (mkfifo (serviceName, 0777) == -1) {
-        fprintf (stderr, "Error creating service fifo\n");
-        exit (EXIT_FAILURE);
+        if (errno != EEXIST) {
+            fprintf (stderr, "Error creating service fifo\n");
+            exit (EXIT_FAILURE);
+        }
     }
 
     //  WRITER открывает свой service FIFO
@@ -46,6 +48,8 @@ int main () {
     while (readChars == 0 || readChars == -1) {
         readChars = read (serviceReadfile, readerPidString, MAX_PID_SIZE);
     }
+
+    fprintf (stdout, "Writer succeded!\n");
 
     //  WRITER открывает channel FIFO своего READER-a
     char channelName [MAX_FILENAME_SIZE];
