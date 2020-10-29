@@ -7,6 +7,8 @@
 #include <sys/wait.h>
 
 //#define DEBUG
+//#define SIG_DEBUG
+//#define BIN_DEBUG
 
 //  FOR MESSAGE
 const int MAX_BUF_SIZE = 100;
@@ -23,6 +25,38 @@ void printfBin (T x) {
     putchar ('\n');
 }
 
+void Sig1ParentHandler (int sig) {
+#ifdef SIG_DEBUG
+    fprintf (stdout, "SIG1!\n");
+#endif //SIG_DEBUG
+    counter >>= 1;
+#ifdef BIN_DEBUG
+    printfBin (cur);
+#endif //BIN_DEBUG
+}
+
+void Sig2ParentHandler (int sig) {
+#ifdef SIG_DEBUG
+    fprintf (stdout, "SIG2!\n");
+#endif //SIG_DEBUG
+    cur += counter;
+    counter >>= 1;
+#ifdef BIN_DEBUG  
+    printfBin (cur);
+#endif //BIN_DEBUG
+}
+
+void SigChldParentHandler (int sig) {
+    fprintf (stderr, "Parent caught SIGCHLD\n");
+    exit (EXIT_FAILURE);
+}
+
+void Sig1ChildHandler (int sig) {
+}
+
+void Sig2ChildHandler (int sig) {
+}
+
 void SendChar (char c, pid_t parentPid) {
     sigset_t sigSet = {};
     sigfillset (&sigSet);
@@ -32,19 +66,29 @@ void SendChar (char c, pid_t parentPid) {
     for (unsigned i = 1 << 7; i >= 1; i >>= 1) {
         if (i & c) {
             kill (parentPid, SIGUSR2);
+#ifdef DEBUG
+        //sleep (1);
+        fprintf (stderr, "(child) Bit sent\n");
+#endif //DEBUG
         }
         else {
             kill (parentPid, SIGUSR1);
+#ifdef DEBUG
+        //sleep (1);
+        fprintf (stderr, "(child) Bit sent\n");
+#endif //DEBUG
         }
         //  Ожидание подтверждения получения бита (SIGUSR1)
 #ifdef DEBUG
-        sleep (1);
-        fprintf (stderr, "Now gonna wait for approval...\n");
+        //sleep (1);
+        fprintf (stderr, "(child) Now gonna wait for approval...\n");
 #endif //DEBUG
             sigsuspend (&sigSet);
+        
 #ifdef DEBUG
-        sleep (1);
-        fprintf (stderr, "Approval catched\n");
+        //sleep (1);
+        fprintf (stdout, "ESLI ETO SOOBSHENIE NE NAPECATALOS, TO MI ZASTRYALI NA SIGSUSPEND!\n");
+        fprintf (stderr, "(child) Approval catched\n");
 #endif //DEBUG
     }
 }
@@ -76,16 +120,21 @@ void GetChar () {
 
     for (unsigned i = 0; i < 8; ++i) {
 #ifdef DEBUG
-        sleep (1);
-        fprintf (stderr, "Now gonna wait for byte...\n");
+        //sleep (1);
+        fprintf (stderr, "(parent) Now gonna wait for bit...\n");
 #endif //DEBUG
+        /* Виснет здесь */
         sigsuspend (&sigSet);
 #ifdef DEBUG
-        sleep (1);
-        fprintf (stderr, "Byte catched\n");
+        //sleep (1);
+        fprintf (stderr, "(parent) Bit catched\n");
 #endif //DEBUG
         //  Подтверждение получения бита
         kill (childPid, SIGUSR1);
+#ifdef DEBUG
+        //sleep (1);
+        fprintf (stderr, "(parent) Approval sent\n");
+#endif //DEBUG
     }
 
     if (counter == 0) counter = 128;
@@ -106,63 +155,43 @@ void GetMessage (char *buf) {
     *buf = '\0';
 }
 
-
-void Sig1ParentHandler (int sig) {
-#ifdef SIG_DEBUG
-    fprintf (stdout, "SIG1!\n");
-#endif //SIG_DEBUG
-    counter >>= 1;
-    printfBin (cur);
-}
-
-void Sig2ParentHandler (int sig) {
-#ifdef SIG_DEBUG
-    fprintf (stdout, "SIG2!\n");
-#endif //SIG_DEBUG
-    cur += counter;
-    counter >>= 1;
-    printfBin (cur);
-}
-
-void SigChldParentHandler (int sig) {
-    fprintf (stderr, "Parent caught SIGCHLD\n");
-    exit (EXIT_FAILURE);
-}
-
-void Sig1ChildHandler (int sig) {
-}
-
-void Sig2ChildHandler (int sig) {
-}
-
 int main () {
     //  Сначала ребёнок заблокирует сигнал о готовности родителя, чтобы 
     //  выставить свои обработчики
-    sigset_t initBlockedSinals;
-    sigfillset (&initBlockedSinals);
-    sigprocmask (SIG_SETMASK, &initBlockedSinals, nullptr);
+    sigset_t initBlockedSignals;
+    sigfillset (&initBlockedSignals);
+    sigprocmask (SIG_SETMASK, &initBlockedSignals, nullptr);
 
     childPid = fork ();
     if (childPid == 0) {   //  CHILD
+        sigset_t sigMask = {};
+        sigfillset (&sigMask);
+
         //  Ребёнок ставит свои обработчики
         struct sigaction sig1Handler;
         sig1Handler.sa_handler = Sig1ChildHandler;
+        sig1Handler.sa_mask = sigMask;
+        sig1Handler.sa_flags = 0;
         sigaction (SIGUSR1, &sig1Handler, nullptr);
 
         struct sigaction sig2Handler;
         sig2Handler.sa_handler = Sig2ChildHandler;
+        sig2Handler.sa_mask = sigMask;
+        sig2Handler.sa_flags = 0;
         sigaction (SIGUSR2, &sig2Handler, nullptr);
         
         //  Ждём SIGUSR2 как знак готовности родителя
-        sigdelset (&initBlockedSinals, SIGUSR2);
+        sigset_t readySet = {};
+        sigfillset (&readySet);
+        sigdelset (&readySet, SIGUSR2);
 #ifdef DEBUG
         fprintf (stderr, "Now child gonna wait until parent ready...\n");
 #endif //DEBUG
-        sigsuspend (&initBlockedSinals);
+        sigsuspend (&readySet);
 #ifdef DEBUG
         fprintf (stderr, "Parent ready\n");
 #endif //DEBUG
-        sigaddset (&initBlockedSinals, SIGUSR2);
+        //sigaddset (&readySet, SIGUSR2);
 
         fprintf (stderr, "Work started...\n");
 
@@ -180,29 +209,33 @@ int main () {
         struct sigaction sig1Handler;
         sig1Handler.sa_handler = Sig1ParentHandler;
         sig1Handler.sa_mask = sigMask;
+        sig1Handler.sa_flags = 0;
         sigaction (SIGUSR1, &sig1Handler, nullptr);
 
         struct sigaction sig2Handler;
         sig2Handler.sa_handler = Sig2ParentHandler;
         sig2Handler.sa_mask = sigMask;
+        sig2Handler.sa_flags = 0;
         sigaction (SIGUSR2, &sig2Handler, nullptr);
 
-        /*
+/*
         struct sigaction sigChldHandler;
         sigChldHandler.sa_handler = SigChldParentHandler;
         sigChldHandler.sa_mask = sigMask;
+        sigChldHandler.sa_flags = SA_NOCLDWAIT;
         sigaction (SIGCHLD, &sigChldHandler, nullptr);
-        */
+*/
         
         //  Подтверждение готовности (SIGUSR2)
         kill (childPid, SIGUSR2);
 
         char message [MAX_BUF_SIZE];
-        GetMessage (message);
+        //GetMessage (message); // <- при входе в йункцию sigprocmask сбрасывается
         fprintf (stdout, "Final message: %s", message);
 
         int status;
-        wait (&status);
+        waitpid (childPid, &status, 0);
+        exit (EXIT_SUCCESS);
     }
     return 0;
 }
