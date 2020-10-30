@@ -1,14 +1,19 @@
 #include <cstdio>
 #include <cstdlib>
-#include <sys/types.h>
 #include <unistd.h>
 #include <signal.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
+#define TEST_EXIT exit (EXIT_FAILURE);
 
 //#define DEBUG
 //#define SIG_DEBUG
 //#define BIN_DEBUG
+//#define CHAR_DEBUG
+//#define BASE_DEBUG
 
 //  FOR MESSAGE
 const int MAX_BUF_SIZE = 100;
@@ -18,9 +23,8 @@ unsigned counter = 128;
 //  CONNECTION STUFF
 pid_t childPid = 0;
 
-template <typename T>
-void printfBin (T x) {
-    for (int i = sizeof(x) << 3; i; --i)
+void printfBin (char x) {
+    for (int i = sizeof (char) << 3; i; --i)
         putchar('0'+ ( (x >> ( i - 1 ) ) & 1 ));
     putchar ('\n');
 }
@@ -146,22 +150,58 @@ void GetMessage (char *buf) {
         cur = 0;
         GetChar ();
         *buf = cur;
+#ifdef CHAR_DEBUG
         fprintf (stdout, "Char caught: %c\n", *buf);
+#endif //CHAR_DEBUG
         ++buf;
         //  Подтверждение получения символа
         kill (childPid, SIGUSR2);
     }
-    fprintf (stdout, "WELL DONE!\n");
+#ifdef BASE_DEBUG
+    fprintf (stderr, "Well done!\n");
+#endif //BASE_DEBUG
     *buf = '\0';
 }
 
-int main () {
+int main (int argc, char **argv) {
+
+    if (argc != 2) {
+        fprintf (stderr, "Usage: ./main [filename]\n");
+        exit (EXIT_FAILURE);
+    }
+
+    int fd = open (argv[1], O_RDONLY);
+
+    if (fd < 0) {
+        fprintf (stderr, "Error opening file!\n");
+        exit (EXIT_FAILURE);
+    }
+
+    char sendMessage [MAX_BUF_SIZE];
+    int retVal = 0;
+    while ((retVal = read (fd, sendMessage, MAX_BUF_SIZE) > 0) && (retVal > 0));
+
+    if (retVal < 0) {
+        fprintf (stderr, "Error reading from file!\n");
+        exit (EXIT_FAILURE);
+    }
+
     //  Сначала ребёнок заблокирует сигнал о готовности родителя, чтобы 
-    //  выставить свои обработчики
+    //  выставить свои обработчики (при этом обработчик SIGCHLD всегда активен)
     sigset_t initBlockedSignals;
     sigfillset (&initBlockedSignals);
+//    sigdelset (&initBlockedSignals, SIGCHLD);
     sigprocmask (SIG_SETMASK, &initBlockedSignals, nullptr);
 
+    sigset_t sigChldMask = {};
+    sigfillset (&sigChldMask);
+/*
+    struct sigaction sigChldHandler;
+    sigChldHandler.sa_handler = SigChldParentHandler;
+    sigChldHandler.sa_mask = sigChldMask;
+    sigChldHandler.sa_flags = SA_NOCLDWAIT;
+    sigaction (SIGCHLD, &sigChldHandler, nullptr);
+*/
     childPid = fork ();
     if (childPid == 0) {   //  CHILD
         sigset_t sigMask = {};
@@ -192,16 +232,14 @@ int main () {
         fprintf (stderr, "Parent ready\n");
 #endif //DEBUG
         //sigaddset (&readySet, SIGUSR2);
-
-        fprintf (stderr, "Work started...\n");
-
-        char message [] = "bitch ya vishu kak molodoi pushkin";
+#ifdef BASE_DEBUG
+        fprintf (stderr, "Broadcast started...\n");
+#endif //BASE_DEBUG
         pid_t parentPid = getppid ();
 
-        SendMessage (message, parentPid);
+        SendMessage (sendMessage, parentPid);
         exit (EXIT_SUCCESS);
     }
-
     else {              //  PARENT
         sigset_t sigMask = {};
         sigfillset (&sigMask);
@@ -217,25 +255,16 @@ int main () {
         sig2Handler.sa_mask = sigMask;
         sig2Handler.sa_flags = 0;
         sigaction (SIGUSR2, &sig2Handler, nullptr);
-
-/*
-        struct sigaction sigChldHandler;
-        sigChldHandler.sa_handler = SigChldParentHandler;
-        sigChldHandler.sa_mask = sigMask;
-        sigChldHandler.sa_flags = SA_NOCLDWAIT;
-        sigaction (SIGCHLD, &sigChldHandler, nullptr);
-*/
         
         //  Подтверждение готовности (SIGUSR2)
         kill (childPid, SIGUSR2);
 
-        char message [MAX_BUF_SIZE];
-        //GetMessage (message); // <- при входе в йункцию sigprocmask сбрасывается
-        fprintf (stdout, "Final message: %s", message);
+        char getMessage [MAX_BUF_SIZE];
+        GetMessage (getMessage);
+        fprintf (stdout, "%s", getMessage);
 
         int status;
         waitpid (childPid, &status, 0);
         exit (EXIT_SUCCESS);
     }
-    return 0;
 }
