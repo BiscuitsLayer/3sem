@@ -17,7 +17,7 @@
 //#define BASE_DEBUG
 
 //  FOR MESSAGE
-const int MAX_BUF_SIZE = 100;
+const size_t MAX_BUF_SIZE = 1e6;
 char cur = -1;
 unsigned counter = 128;
 

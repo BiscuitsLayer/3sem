@@ -4,6 +4,6 @@ c:
 b:
 		g++ main.cpp -ggdb3 -o main -ggdb3
 r:
-		./main input.txt
+		./main input1.txt
 d:
 		diff input.txt output.txt
