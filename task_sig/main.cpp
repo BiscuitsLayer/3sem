@@ -10,16 +10,10 @@
 
 #define TEST_EXIT exit (EXIT_FAILURE);
 
-//#define DEBUG
-//#define SIG_DEBUG
-//#define BIN_DEBUG
-//#define CHAR_DEBUG
-//#define BASE_DEBUG
-
 //  FOR MESSAGE
-const size_t MAX_BUF_SIZE = 1e6;
-char cur = -1;
+char cur = 100;
 unsigned counter = 128;
+bool msgEnd = false;
 
 //  CONNECTION STUFF
 pid_t childPid = 0;
@@ -30,25 +24,20 @@ void printfBin (char x) {
     putchar ('\n');
 }
 
-void Sig1ParentHandler (int sig) {
-#ifdef SIG_DEBUG
-    fprintf (stdout, "SIG1!\n");
-#endif //SIG_DEBUG
-    counter >>= 1;
-#ifdef BIN_DEBUG
-    printfBin (cur);
-#endif //BIN_DEBUG
+void Sig1ParentGetMessageHandler (int sig) {
 }
 
-void Sig2ParentHandler (int sig) {
-#ifdef SIG_DEBUG
-    fprintf (stdout, "SIG2!\n");
-#endif //SIG_DEBUG
+void Sig2ParentGetMessageHandler (int sig) {
+    msgEnd = true;
+}
+
+void Sig1ParentGetCharHandler (int sig) {
+    counter >>= 1;
+}
+
+void Sig2ParentGetCharHandler (int sig) {
     cur += counter;
     counter >>= 1;
-#ifdef BIN_DEBUG  
-    printfBin (cur);
-#endif //BIN_DEBUG
 }
 
 void SigChldParentHandler (int sig) {
@@ -74,56 +63,44 @@ void SendChar (char c, pid_t parentPid) {
     for (unsigned i = 1 << 7; i >= 1; i >>= 1) {
         if (i & c) {
             kill (parentPid, SIGUSR2);
-#ifdef DEBUG
-        //sleep (1);
-        fprintf (stderr, "(child) Bit sent\n");
-#endif //DEBUG
         }
         else {
             kill (parentPid, SIGUSR1);
-#ifdef DEBUG
-        //sleep (1);
-        fprintf (stderr, "(child) Bit sent\n");
-#endif //DEBUG
         }
         //  Ожидание подтверждения получения бита (SIGUSR1)
-#ifdef DEBUG
-        //sleep (1);
-        fprintf (stderr, "(child) Now gonna wait for approval...\n");
-#endif //DEBUG
-            sigsuspend (&sigSet);
-        
-#ifdef DEBUG
-        //sleep (1);
-        fprintf (stdout, "ESLI ETO SOOBSHENIE NE NAPECATALOS, TO MI ZASTRYALI NA SIGSUSPEND!\n");
-        fprintf (stderr, "(child) Approval catched\n");
-#endif //DEBUG
+        sigsuspend (&sigSet);
     }
 }
 
-void SendMessage (char *buf, pid_t parentPid) {
-    char *temp = buf;
+void SendMessage (int fd, pid_t parentPid) {
+    char temp = '\0';
     sigset_t sigSet = {};
     sigfillset (&sigSet);
     //  Только SIGUSR2 будет отвечать за получение символа
     sigdelset (&sigSet, SIGUSR2);
 
-    while (*temp != '\0' && *temp != EOF) {
-        SendChar (*temp, parentPid);
+    int retVal = 0;
+
+    while ((retVal = read (fd, &temp, 1) > 0) && retVal > 0) {
+        //  SIGUSR1 если сообщение еще не кончилось, SIGUSR2 если кончилось
+        kill (parentPid, SIGUSR1);
+        //  Ожидание подтверждения получения информации о следующем символе (SIGUSR2)
+        sigsuspend (&sigSet);
+        //  Передача символа
+        SendChar (temp, parentPid);
         //  Ожидание подтверждения получения символа (SIGUSR2)
         sigsuspend (&sigSet);
-        ++temp;
     }
 
-    SendChar ('\0', parentPid);
-    //  Ожидание подтверждения получения символа (SIGUSR2)
+    //  SIGUSR1 если сообщение еще не кончилось, SIGUSR2 если кончилось
+    kill (parentPid, SIGUSR2);
+    //  Ожидание подтверждения получения информации о следующем символе (SIGUSR2)
     sigsuspend (&sigSet);
 
-    //  Далее, перед тем как умереть, ребёнок ждёт SIGUSR1 как подтверждение того, что родитель готов к его смерти
-    //  (до этого я делал так, чтобы ребёнок ждал SIGUSR2, но это не работало, тк скорее всего ребёнку просто
-    //  приходило два SIGUSR2 подряд, и он не различал это как два раздельных сигнала)
-    sigdelset (&sigSet, SIGUSR1);
-    sigsuspend (&sigSet);
+    if (retVal < 0) {
+        fprintf (stderr, "Error reading from file!");
+        exit (EXIT_FAILURE);
+    }
 }
 
 void GetChar () {
@@ -134,64 +111,67 @@ void GetChar () {
     sigdelset (&sigSet, SIGCHLD);
 
     for (unsigned i = 0; i < 8; ++i) {
-#ifdef DEBUG
-        //sleep (1);
-        fprintf (stderr, "(parent) Now gonna wait for bit...\n");
-#endif //DEBUG
         sigsuspend (&sigSet);
-#ifdef DEBUG
-        //sleep (1);
-        fprintf (stderr, "(parent) Bit catched\n");
-#endif //DEBUG
         //  Подтверждение получения бита
         kill (childPid, SIGUSR1);
-#ifdef DEBUG
-        //sleep (1);
-        fprintf (stderr, "(parent) Approval sent\n");
-#endif //DEBUG
     }
 
     if (counter == 0) counter = 128;
 }
 
-void GetMessage (char *buf) {
-    char *bufStart = buf;
-    while (cur != '\0' && (buf - bufStart < MAX_BUF_SIZE - 1)) {
+void GetMessage () {
+    sigset_t getMessageSet = {};
+    sigfillset (&getMessageSet);
+    sigdelset (&getMessageSet, SIGUSR1);
+    sigdelset (&getMessageSet, SIGUSR2);
+    sigdelset (&getMessageSet, SIGCHLD);
+
+    //  Получаем тип следующего символа
+    sigsuspend (&getMessageSet);
+
+    while (!msgEnd) {
+        sigset_t sigMask = {};
+        sigfillset (&sigMask);
+
+        //  Ставим новые обработчики для получения символа
+        struct sigaction sig1Handler;
+        sig1Handler.sa_handler = Sig1ParentGetCharHandler;
+        sig1Handler.sa_mask = sigMask;
+        sig1Handler.sa_flags = 0;
+        sigaction (SIGUSR1, &sig1Handler, nullptr);
+
+        struct sigaction sig2Handler;
+        sig2Handler.sa_handler = Sig2ParentGetCharHandler;
+        sig2Handler.sa_mask = sigMask;
+        sig2Handler.sa_flags = 0;
+        sigaction (SIGUSR2, &sig2Handler, nullptr);
+
+        //  Подтвержаем получение информации о следующем символе
+        kill (childPid, SIGUSR2);
+
         cur = 0;
+
+        //  Получение символа
         GetChar ();
-        *buf = cur;
-#ifdef CHAR_DEBUG
-        fprintf (stdout, "Char caught: %c\n", *buf);
-#endif //CHAR_DEBUG
-        ++buf;
+        fprintf (stdout, "%c", cur);
+
+        //  Ставим новые обработчики для получения типа следующего символа
+        sig1Handler.sa_handler = Sig1ParentGetMessageHandler;
+        sig1Handler.sa_mask = sigMask;
+        sig1Handler.sa_flags = 0;
+        sigaction (SIGUSR1, &sig1Handler, nullptr);
+
+        sig2Handler.sa_handler = Sig2ParentGetMessageHandler;
+        sig2Handler.sa_mask = sigMask;
+        sig2Handler.sa_flags = 0;
+        sigaction (SIGUSR2, &sig2Handler, nullptr);
+
         //  Подтверждение получения символа
         kill (childPid, SIGUSR2);
-    }
-#ifdef BASE_DEBUG
-    fprintf (stderr, "Well done!\n");
-#endif //BASE_DEBUG
-    *buf = '\0';
-    
-    //  Сообщение о смерти ребёнка: сначала ребёнок ждёт SIGUSR2, затем умирает, отправляя SIGCHLD
 
-    //  1) Готовим маску, принимающую SIGHCHLD; её же будем использовать при обработке SIGCHLD
-    sigset_t deadChldMask;
-    sigfillset (&deadChldMask);
-    sigdelset (&deadChldMask, SIGCHLD);
-
-    //  2) Ставим новый обработчик SIGCHLD
-    struct sigaction sigChldOK;
-    sigChldOK.sa_handler = SigChldParentOK;
-    sigChldOK.sa_mask = deadChldMask;
-    sigChldOK.sa_flags = SA_NOCLDWAIT;
-    sigaction (SIGCHLD, &sigChldOK, nullptr);
-
-    //  3) Посылаем ребёнку SIGUSR2, подтвержая, что мы готовы к его смерти
-    kill (childPid, SIGUSR1);
-
-    //  4) Ждём его SIGCHLD
-    sigsuspend (&deadChldMask);
-
+        //  Получаем тип следующего символа
+        sigsuspend (&getMessageSet);
+    }   
 }
 
 int main (int argc, char **argv) {
@@ -217,33 +197,20 @@ int main (int argc, char **argv) {
     sigChldHandler.sa_flags = SA_NOCLDWAIT;
     sigaction (SIGCHLD, &sigChldHandler, nullptr);
 
-    //  Ребёнок тоже будет умирать при смерти родителя
-    prctl (PR_SET_PDEATHSIG, SIGKILL);
-
     childPid = fork ();
-    if (childPid == 0) {   //  CHILD
+    if (childPid == 0) {   //  CHILD <- отправляет сообщение
+        //  Ребёнок тоже будет умирать при смерти родителя
+        prctl (PR_SET_PDEATHSIG, SIGKILL);
+
+        if (getppid () == 1) {
+            fprintf (stderr, "Parent died\n");
+            exit (EXIT_FAILURE);
+        }
 
         int fd = open (argv[1], O_RDONLY);
 
         if (fd < 0) {
             fprintf (stderr, "Error opening file!\n");
-            exit (EXIT_FAILURE);
-        }
-
-        char sendMessage [MAX_BUF_SIZE];
-        int retVal = 0;
-        unsigned successCnt = 0;
-        while ((retVal = read (fd, sendMessage, MAX_BUF_SIZE) > 0) && (retVal > 0)) {
-            ++successCnt;
-        }
-
-        if (retVal == 0 && successCnt == 0) {
-            fprintf (stderr, "Empty file!\n");
-            exit (EXIT_FAILURE);
-        }
-
-        if (retVal < 0) {
-            fprintf (stderr, "Error reading from file!\n");
             exit (EXIT_FAILURE);
         }
 
@@ -267,48 +234,61 @@ int main (int argc, char **argv) {
         sigset_t readySet = {};
         sigfillset (&readySet);
         sigdelset (&readySet, SIGUSR2);
-#ifdef DEBUG
-        fprintf (stderr, "Now child gonna wait until parent ready...\n");
-#endif //DEBUG
         sigsuspend (&readySet);
-#ifdef DEBUG
-        fprintf (stderr, "Parent ready\n");
-#endif //DEBUG
         sigaddset (&readySet, SIGUSR2);
-#ifdef BASE_DEBUG
-        fprintf (stderr, "Broadcast started...\n");
-#endif //BASE_DEBUG
-        pid_t parentPid = getppid ();
 
-        SendMessage (sendMessage, parentPid);
+        pid_t parentPid = getppid ();
+        
+        SendMessage (fd, parentPid);  
+        
+        //  Далее, перед тем как умереть, ребёнок ждёт SIGUSR1 как подтверждение того, что родитель готов к его смерти
+        //  (до этого я делал так, чтобы ребёнок ждал SIGUSR2, но это не работало, тк скорее всего ребёнку просто
+        //  приходило два SIGUSR2 подряд, и он не различал это как два раздельных сигнала)
+        sigset_t sigSet = {};
+        sigfillset (&sigSet);
+        sigdelset (&sigSet, SIGUSR1);
+        sigsuspend (&sigSet);
+
         exit (EXIT_SUCCESS);
     }
-    else {              //  PARENT
+    else {              //  PARENT <- получает сообщение
         sigset_t sigMask = {};
         sigfillset (&sigMask);
         sigdelset (&sigMask, SIGCHLD);
         
         struct sigaction sig1Handler;
-        sig1Handler.sa_handler = Sig1ParentHandler;
+        sig1Handler.sa_handler = Sig1ParentGetMessageHandler;
         sig1Handler.sa_mask = sigMask;
         sig1Handler.sa_flags = 0;
         sigaction (SIGUSR1, &sig1Handler, nullptr);
 
         struct sigaction sig2Handler;
-        sig2Handler.sa_handler = Sig2ParentHandler;
+        sig2Handler.sa_handler = Sig2ParentGetMessageHandler;
         sig2Handler.sa_mask = sigMask;
         sig2Handler.sa_flags = 0;
         sigaction (SIGUSR2, &sig2Handler, nullptr);
         
         //  Подтверждение готовности (SIGUSR2)
         kill (childPid, SIGUSR2);
+        GetMessage ();
+        
+        //  Сообщение о смерти ребёнка: сначала ребёнок ждёт SIGUSR1, затем умирает, отправляя SIGCHLD
 
-        char getMessage [MAX_BUF_SIZE];
-        GetMessage (getMessage);
-        fprintf (stdout, "%s", getMessage);
+        //  1) Готовим маску, принимающую SIGHCHLD; её же будем использовать при обработке SIGCHLD
+        sigset_t deadChldMask;
+        sigfillset (&deadChldMask);
+        sigdelset (&deadChldMask, SIGCHLD);
 
-        int status;
-        waitpid (childPid, &status, 0);
+        //  2) Ставим новый обработчик SIGCHLD
+        struct sigaction sigChldOK;
+        sigChldOK.sa_handler = SigChldParentOK;
+        sigChldOK.sa_mask = deadChldMask;
+        sigChldOK.sa_flags = SA_NOCLDWAIT;
+        sigaction (SIGCHLD, &sigChldOK, nullptr);
+
+        //  3) Посылаем ребёнку SIGUSR1, подтвержая, что мы готовы к его смерти
+        kill (childPid, SIGUSR1);
+        
         exit (EXIT_SUCCESS);
     }
 }
