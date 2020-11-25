@@ -19,6 +19,11 @@
 	}															\
 }
 
+#define SLEEP(msg) {								\
+	fprintf (stderr, "Sleeping... %s\n", msg);		\
+	sleep (1);										\
+}
+
 enum SemType {
 	readyReader = 0,
 	readyWriter = 1,
@@ -78,6 +83,14 @@ void P (int semId, SemType type, unsigned value, bool isUndo, long seconds) {
 	else {
 		CHECK (semop (semId, &semOp, 1) == -1);
 	}
+}
+
+void P_nowait (int semId, SemType type, unsigned value, bool isUndo, bool isNoWait) {
+	sembuf semOp {};
+	semOp.sem_num = type;
+	semOp.sem_op = -value;
+	semOp.sem_flg = (isNoWait ? IPC_NOWAIT : 0);
+	CHECK (semop (semId, &semOp, 1) == -1);
 }
 
 void WaitZero (int semId, SemType type, long seconds = 0L) {
