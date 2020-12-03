@@ -5,14 +5,14 @@ int main (int argc, char **argv) {
     CHECK (key == -1);
 	int semId = semget (key, SEM_ARRAY_SIZE, IPC_CREAT | IPC_EXCL | 0666);
 	CHECK (semId == -1);
-
+/*
     //! SEM INIT
 	for (int i = 0; i < SEM_ARRAY_SIZE; ++i) {
 		semctl (semId, i, SETVAL, 0);
 	}
 	semctl (semId, SemType::empty, SETVAL, 1);
 	//! SEM INIT
-
+*/
     fprintf (stdout, "Initialized:\n");
     for (int i = 0; i < SEM_ARRAY_SIZE; ++i)
 		fprintf (stdout, "sem %d == %d\n", i, GetValue (semId, (SemType)i));

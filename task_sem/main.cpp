@@ -8,7 +8,8 @@ int main (int argc, char **argv) {
 	key_t key = ftok (argv[0], FTOK_ID);
     CHECK (key == -1);
 
-	int semId = semget (key, SEM_ARRAY_SIZE, 0666);
+	//int semId = semget (key, SEM_ARRAY_SIZE, 0666);
+	int semId = semget (key, SEM_ARRAY_SIZE, IPC_CREAT | 0666);
 	CHECK (semId == -1);
 
 	int shmId = shmget (key, MAX_SHMEM_TEXT_SIZE + sizeof (BroadcastFlag) + sizeof (int), IPC_CREAT | 0666);
@@ -39,10 +40,13 @@ int main (int argc, char **argv) {
 		V (semId, SemType::empty, 1, false);
 		P (semId, SemType::empty, 1, true, 0L);
 
+		printf ("empty = %d\n", semctl (semId, SemType::empty, GETVAL));
+		exit (0);
     	//* Последняя проверка перед циклом на готовность
 		//* (пользуемся тем, что если получилось сделать P без IPC_NOWAIT, то должно сразу получиться)
 		//TODO
     	V (semId, SemType::criticalGuardWriter, 1, false);
+		exit (0);
     	P (semId, SemType::criticalGuardReader, 1, false, 1L);
 
 		char* buf = (char *) calloc (MAX_SHMEM_TEXT_SIZE, sizeof (char));
@@ -86,6 +90,15 @@ int main (int argc, char **argv) {
 		free (buf);
 	}
 	else if (argc == 2) {	//	WRITER
+
+		//! SEM INIT
+		for (int i = 2; i < 4; ++i) {
+			semctl (semId, i, SETVAL, 0);
+		} 
+		exit (0);
+		if (GetValue (semId, SemType::busy) == 0)
+			semctl (semId, SemType::empty, SETVAL, 1);
+		//! SEM INIT
 
 		int fd = open (argv[1], O_RDONLY);
 		//* Ждём, пока завершатся все предыдущие процессы
