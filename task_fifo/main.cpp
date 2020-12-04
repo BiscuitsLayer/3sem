@@ -19,7 +19,7 @@ const int MAX_NAME_SIZE = 100;
 const int MAX_MSG_SIZE = 100;
 const int MAX_WAIT_TIME_SEC = 5;
 
-int OpenFifo (char* fifoName, mode_t mode) {
+int OpenFifo (const char* fifoName, mode_t mode) {
 	if (mkfifo (fifoName, 0666) < 0) {
 		if (errno != EEXIST) {
 			fprintf (stderr, "Error creating fifo\n");
@@ -44,7 +44,7 @@ int main (int argc, char** argv) {
 			fprintf (stderr, "Error opening fifo\n");
 			exit (EXIT_FAILURE);
 		}
-EXIT
+
 		retVal = read (pidFifo, &readerPid, sizeof (readerPid));
 		if (retVal < 0) {
 			fprintf (stderr, "Reading from pidFifo error\n");
@@ -70,6 +70,7 @@ EXIT
 			fprintf (stderr, "Error opening file\n");
 			exit (EXIT_FAILURE);
 		}
+	
 		while (true) {
 			retVal = splice (fileFd, NULL, dataFifo, NULL, MAX_MSG_SIZE, SPLICE_F_MOVE);
 			if (retVal == 0) {
