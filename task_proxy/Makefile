@@ -1,4 +1,4 @@
-all:	build link test
+all:	build link
 build:
 		g++ main.cpp -ggdb3 -c
 		g++ parent.cpp -ggdb3 -c

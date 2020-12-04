@@ -13,6 +13,8 @@
 #include <cstring>
 #include <poll.h>
 
+#define EXIT exit (EXIT_FAILURE);
+
 const int MAX_NAME_SIZE = 100;
 const int MAX_MSG_SIZE = 100;
 const int MAX_WAIT_TIME_SEC = 5;
@@ -23,6 +25,7 @@ int OpenFifo (char* fifoName, mode_t mode) {
 			fprintf (stderr, "Error creating fifo\n");
 			exit (EXIT_FAILURE);
 		}
+		errno = 0;
 	}
 	return open (fifoName, mode);
 }
@@ -41,7 +44,7 @@ int main (int argc, char** argv) {
 			fprintf (stderr, "Error opening fifo\n");
 			exit (EXIT_FAILURE);
 		}
-
+EXIT
 		retVal = read (pidFifo, &readerPid, sizeof (readerPid));
 		if (retVal < 0) {
 			fprintf (stderr, "Reading from pidFifo error\n");
@@ -56,6 +59,11 @@ int main (int argc, char** argv) {
 		sprintf (dataFifoName, "dataFifo_%d.fifo", readerPid);
 		int dataFifo = OpenFifo (dataFifoName, O_WRONLY | O_NONBLOCK);
 		fcntl (dataFifo, F_SETFL, O_WRONLY);
+
+		if (retVal < 0) {
+			fprintf (stderr, "Fcntl error\n");
+			exit (EXIT_FAILURE);
+		}
 		
 		int fileFd = open (argv[1], O_RDONLY);
 		if (fileFd < 0) {
@@ -104,12 +112,21 @@ int main (int argc, char** argv) {
 			exit (EXIT_FAILURE);
 		}
 
-		fcntl (dataFifo, F_SETFL, O_WRONLY);
+		retVal = fcntl (dataFifo, F_SETFL, O_RDONLY);
+		if (retVal < 0) {
+			fprintf (stderr, "Fcntl error %d\n", errno);
+			exit (EXIT_FAILURE);
+		}
 
 		if (isatty (STDOUT_FILENO)) {
 			int stdoutFlags = fcntl(STDOUT_FILENO, F_GETFL) ;
 			stdoutFlags &= ~O_APPEND;
 			fcntl (STDOUT_FILENO, F_SETFL, stdoutFlags);
+
+			if (retVal < 0) {
+			fprintf (stderr, "Fcntl error\n");
+			exit (EXIT_FAILURE);
+		}
 		}
 
 		while (true) {
