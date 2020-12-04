@@ -44,8 +44,12 @@ int main (int argc, char** argv) {
 			fprintf (stderr, "Error opening fifo\n");
 			exit (EXIT_FAILURE);
 		}
-
+		
+		//	CriticalStart (3) - writer-ы борятся между собой за pid reader-a
+		//	CriticalStart (4) - writer за право доступа к своей dataFifo
 		retVal = read (pidFifo, &readerPid, sizeof (readerPid));
+		//	CriticalEnd (3)
+
 		if (retVal < 0) {
 			fprintf (stderr, "Reading from pidFifo error\n");
 			exit (EXIT_FAILURE);
@@ -58,6 +62,7 @@ int main (int argc, char** argv) {
 		char dataFifoName [MAX_NAME_SIZE];
 		sprintf (dataFifoName, "dataFifo_%d.fifo", readerPid);
 		int dataFifo = OpenFifo (dataFifoName, O_WRONLY | O_NONBLOCK);
+		// CriticalEnd (4)
 		fcntl (dataFifo, F_SETFL, O_WRONLY);
 
 		if (retVal < 0) {
@@ -98,7 +103,11 @@ int main (int argc, char** argv) {
 		char dataFifoName [MAX_NAME_SIZE];
 		sprintf (dataFifoName, "dataFifo_%d.fifo", readerPid);
 		int dataFifo = OpenFifo (dataFifoName, O_RDONLY | O_NONBLOCK);
+
+		//	CriticalStart (1) - reader-ы борятся между собой за возможность отправить pid
+		//	CriticalStart (2) - reader за право доступа к dataFifo
 		write (pidFifo, &readerPid, sizeof (readerPid));
+		//	CriticalEnd (1)
 
 		fd_set dataFifoSet {};
 		FD_ZERO (&dataFifoSet);
@@ -107,6 +116,8 @@ int main (int argc, char** argv) {
 		timeval timeVal {};
 		timeVal.tv_sec = MAX_WAIT_TIME_SEC;
 		retVal = select (dataFifo + 1, &dataFifoSet, NULL, NULL, &timeVal);
+		//	CriticalEnd (2)
+
 
 		if (retVal <= 0) {
 			fprintf (stderr, "Can't read data\n");
@@ -120,7 +131,7 @@ int main (int argc, char** argv) {
 		}
 
 		if (isatty (STDOUT_FILENO)) {
-			int stdoutFlags = fcntl(STDOUT_FILENO, F_GETFL) ;
+			int stdoutFlags = fcntl (STDOUT_FILENO, F_GETFL) ;
 			stdoutFlags &= ~O_APPEND;
 			fcntl (STDOUT_FILENO, F_SETFL, stdoutFlags);
 
