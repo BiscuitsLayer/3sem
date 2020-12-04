@@ -82,9 +82,9 @@ ParentDebug (connections, n, deadChildren);
 			if (FD_ISSET (connections[i].C2PPipeFds[FD::READ], &readFds)) { 
             	int retVal = ReadToBuf (connections, i, n);
             	if (retVal < 0) {
-					//TODO Разобраться с этой ошибкой
-            	    fprintf (stderr, "HAHA UNKNOWN ERROR\n");
-            	    continue;
+					fprintf (stderr, "Error reading to buf\n");
+        	        ClearBuffers (connections, n);
+        	        exit (EXIT_FAILURE);
             	}
 				if (retVal == 0) {
 
