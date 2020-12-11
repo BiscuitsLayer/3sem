@@ -29,7 +29,7 @@ enum FD {
 };
 
 const int MAX_CHILDREN_COUNT = 14;
-const int MAX_MSG_SIZE = 5;
+const int MAX_MSG_SIZE = 1;
 const int POISON = -666;
 
 struct CircleBuf {
@@ -43,7 +43,6 @@ struct ConnectionData {
 	pid_t parentPid = 0, childPid = 0;
 	int C2PPipeFds [2];			// Child to parent
 	int P2CPipeFds [2]; 		// Parent to child
-	bool P2CPipeFull = false;	// Заполнена ли труба из parent в child
 	
 	CircleBuf buf {};
 	bool isFinished = false;

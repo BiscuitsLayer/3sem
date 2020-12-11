@@ -49,10 +49,8 @@ void ParentWork (ConnectionData* connections, int n) {
 				FD_SET (readFd, &readFds);
 				maxFd = (readFd > maxFd ? readFd : maxFd);
 			}
+			
 			if (!isEmpty (&connections[i].buf)) {
-				//* Если труба заполнена, то даже не пробуем записывать
-				if (connections[i].P2CPipeFull) 
-					continue;
 				int writeFd = connections[i].P2CPipeFds[FD::WRITE];
 				FD_SET (writeFd, &writeFds);
 				maxFd = (writeFd > maxFd ? writeFd : maxFd);
@@ -81,11 +79,7 @@ ParentDebug (connections, n, deadChildren);
 		for (int i = deadChildren; i < n; ++i) {
 			if (FD_ISSET (connections[i].C2PPipeFds[FD::READ], &readFds)) { 
             	int retVal = ReadToBuf (connections, i, n);
-            	if (retVal < 0) {
-					fprintf (stderr, "Error reading to buf\n");
-        	        ClearBuffers (connections, n);
-        	        exit (EXIT_FAILURE);
-            	}
+
 				if (retVal == 0) {
 
 #ifdef CHILDDEBUG					
@@ -95,22 +89,12 @@ fprintf (stderr, "Parent finished connection with child %d\n", i);
             	    CLOSE (connections[i].C2PPipeFds[FD::READ]);
 					connections[i].isFinished = true;
             	}
-				else { // retval > 0
-					//* Pipe больше не заполнен - какие-то данные из него прочитали
-					connections[i].P2CPipeFull = false;
-				}	
 			}
         
         	if (FD_ISSET (connections[i].P2CPipeFds[FD::WRITE], &writeFds)) {
         	    int retVal = WriteFromBuf (connections, i, n);
-        	    if (retVal < 0) {
-        	        if (errno == EAGAIN) {
-						//* Pipe заполнен, поэтому будем ждать, пока кто-нибудь из неё прочитает
-						connections[i].P2CPipeFull = true;
-            	    	continue;
-					}
-        	    }
         	}
+			
         	if (isEmpty (&connections[i].buf) && connections[i].isFinished) {
 				waitpid (connections[i].childPid, nullptr, 0);
         	    if (i != deadChildren++) {

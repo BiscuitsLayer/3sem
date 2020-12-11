@@ -44,9 +44,6 @@ int ReadToBuf (ConnectionData* connections, int Id, int n) {
 	if (retVal != 0) {
 		if (cur->readShift == cur->writeShift)
 			cur->isFull = true;
-        // Прочитали в буфер, => освободили Pipe
-        if (Id != 0)
-		    connections[Id - 1].P2CPipeFull = false;
 
 #ifdef RWDEBUG
 fprintf (stderr, "Read to buf in connection %d\n", Id);
@@ -78,7 +75,7 @@ int WriteFromBuf (ConnectionData* connections, int Id, int n) {
         retVal = write (connections[Id].P2CPipeFds [FD::WRITE], cur->startPtr + cur->writeShift, cur->readShift - cur->writeShift);
     }
 	
-	if (retVal < 0) {
+	if (retVal < 0 && errno != EAGAIN) {
 		fprintf (stderr, "Error writing from buf in connection %d\n", Id);
 		ClearBuffers (connections, n);
 		exit (EXIT_FAILURE);
