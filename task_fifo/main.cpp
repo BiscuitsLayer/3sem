@@ -117,12 +117,13 @@ int main (int argc, char** argv) {
 		//	CriticalStart (1) - reader-ы борятся между собой за возможность отправить pid
 		//	CriticalStart (2) - reader за право доступа к dataFifo
 		retVal = write (pidFifo, &readerPid, sizeof (readerPid));
-
+		//	CriticalEnd (1)
+		
 		if (retVal < 0) {
 			fprintf (stderr, "Writing to pidFifo error\n");
 			exit (EXIT_FAILURE);
 		} 
-		//	CriticalEnd (1)
+		
 
 		fd_set dataFifoSet {};
 		FD_ZERO (&dataFifoSet);
@@ -131,12 +132,13 @@ int main (int argc, char** argv) {
 		timeval timeVal {};
 		timeVal.tv_sec = MAX_WAIT_TIME_SEC;
 		retVal = select (dataFifo + 1, &dataFifoSet, NULL, NULL, &timeVal);
+		//	CriticalEnd (2)
 		
 		if (retVal <= 0) {
 			fprintf (stderr, "Can't read data\n");
 			exit (EXIT_FAILURE);
 		}
-		//	CriticalEnd (2)
+
 
 		retVal = fcntl (dataFifo, F_SETFL, O_RDONLY);
 
