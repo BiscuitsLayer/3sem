@@ -15,12 +15,12 @@
 #include <cstring>
 
 //#define DEBUG
-//#define RWDEBUG
-//#define CHILDDEBUG
 
-#define CLOSE(fd) { \
-	close (fd);		\
-	fd = POISON;	\
+#define CLOSE(fd) { 	\
+	if (fd != POISON) {	\
+		close (fd);		\
+		fd = POISON;	\
+	}					\
 }
 
 enum FD {
@@ -29,8 +29,8 @@ enum FD {
 };
 
 const int MAX_CHILDREN_COUNT = 14;
-const int MAX_MSG_SIZE = 1;
-const int POISON = -666;
+const int MAX_MSG_SIZE = 100;
+const int POISON = 666;
 
 struct CircleBuf {
 	char* startPtr = nullptr;
@@ -45,7 +45,6 @@ struct ConnectionData {
 	int P2CPipeFds [2]; 		// Parent to child
 	
 	CircleBuf buf {};
-	bool isFinished = false;
 };
 
 void ClearBuffers (ConnectionData* connections, int n);

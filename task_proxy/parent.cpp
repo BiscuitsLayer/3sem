@@ -16,7 +16,7 @@ void ParentInit (ConnectionData* connections, int Id, int n, int childPid) {
 }
 
 void ParentWork (ConnectionData* connections, int n) {
-	// Закрываем нужные файловые дескрипторы (см инициализацию), кроме последнего
+// Закрываем нужные файловые дескрипторы (см инициализацию), кроме последнего
 	for (unsigned i = 0; i < n - 1; ++i) {
 		CLOSE (connections[i].P2CPipeFds[FD::READ]);
 	}
@@ -44,14 +44,15 @@ void ParentWork (ConnectionData* connections, int n) {
 		int maxFd = 0;
 		
 		for (unsigned i = deadChildren; i < n; ++i) {
-			if (!isFull (&connections[i].buf)) {
-				int readFd = connections[i].C2PPipeFds[FD::READ];
+			int readFd = connections[i].C2PPipeFds[FD::READ];
+			int writeFd = connections[i].P2CPipeFds[FD::WRITE];
+
+			if (!isFull (&connections[i].buf) && (readFd != POISON)) {
 				FD_SET (readFd, &readFds);
 				maxFd = (readFd > maxFd ? readFd : maxFd);
 			}
 			
-			if (!isEmpty (&connections[i].buf)) {
-				int writeFd = connections[i].P2CPipeFds[FD::WRITE];
+			if (!isEmpty (&connections[i].buf) && (writeFd != POISON)) {
 				FD_SET (writeFd, &writeFds);
 				maxFd = (writeFd > maxFd ? writeFd : maxFd);
 			}
@@ -81,13 +82,7 @@ ParentDebug (connections, n, deadChildren);
             	int retVal = ReadToBuf (connections, i, n);
 
 				if (retVal == 0) {
-
-#ifdef CHILDDEBUG					
-fprintf (stderr, "Parent finished connection with child %d\n", i);
-#endif
-
             	    CLOSE (connections[i].C2PPipeFds[FD::READ]);
-					connections[i].isFinished = true;
             	}
 			}
         
@@ -95,17 +90,14 @@ fprintf (stderr, "Parent finished connection with child %d\n", i);
         	    int retVal = WriteFromBuf (connections, i, n);
         	}
 			
-        	if (isEmpty (&connections[i].buf) && connections[i].isFinished) {
+        	if (isEmpty (&connections[i].buf) && (connections[i].C2PPipeFds[FD::READ] == POISON)) {
 				waitpid (connections[i].childPid, nullptr, 0);
+				
         	    if (i != deadChildren++) {
         	        fprintf (stderr, "Wrong child death sequence\n");
         	        ClearBuffers (connections, n);
         	        exit (EXIT_FAILURE);
         	    }
-
-#ifdef CHILDDEBUG				
-fprintf (stderr, "Now deadChildren == %d\n", deadChildren);
-#endif
 
 				CLOSE (connections[i].P2CPipeFds[FD::WRITE]);
         	}

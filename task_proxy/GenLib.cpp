@@ -42,15 +42,9 @@ int ReadToBuf (ConnectionData* connections, int Id, int n) {
     cur->readShift %= cur->size;
 
 	if (retVal != 0) {
-		if (cur->readShift == cur->writeShift)
+		if (cur->readShift == cur->writeShift) {
 			cur->isFull = true;
-
-#ifdef RWDEBUG
-fprintf (stderr, "Read to buf in connection %d\n", Id);
-fprintf (stderr, "readShift: %d, writeShift: %d of size %d\n", cur->readShift, cur->writeShift, cur->size);
-BufPrint (cur);
-#endif
-
+		}
 	}
 
 	return retVal;
@@ -87,12 +81,6 @@ int WriteFromBuf (ConnectionData* connections, int Id, int n) {
 	if (retVal != 0) {
 		//* Что-то прочитали, значит буфер уже не полный
 		cur->isFull = false;
-
-#ifdef RWDEBUG
-fprintf (stderr, "Write from buf in connection %d\n", Id);
-fprintf (stderr, "readShift: %d, writeShift: %d of size %d\n", cur->readShift, cur->writeShift, cur->size);
-BufPrint (cur);
-#endif
     }
 
 	return retVal;

@@ -53,12 +53,6 @@ ChildDebug (connections, Id, fileFd);
 		}
 
 		if (retVal == 0) {
-
-#ifdef CHILDDEBUG
-fprintf (stderr, "Child %d leaving and closing fds %d (write) and %d (read)\n", Id, connections[Id].C2PPipeFds[FD::WRITE], \
-(Id == 0 ? fileFd : connections[Id - 1].P2CPipeFds[FD::READ]));
-#endif
-
             CLOSE (connections[Id].C2PPipeFds[FD::WRITE]);
 			if (Id == 0) {
 				CLOSE (fileFd);
