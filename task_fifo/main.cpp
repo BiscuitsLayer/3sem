@@ -47,6 +47,7 @@ int main (int argc, char** argv) {
 		}
 		
 		//	CriticalStart (3) - writer-ы борятся между собой за pid reader-a
+		// 	CriticalStart (4) - парный код
 		retVal = read (pidFifo, &readerPid, sizeof (readerPid));
 		//	CriticalEnd (3)
 
@@ -62,6 +63,7 @@ int main (int argc, char** argv) {
 		char dataFifoName [MAX_NAME_SIZE];
 		sprintf (dataFifoName, "dataFifo_%d.fifo", readerPid);
 		int dataFifo = OpenFifo (dataFifoName, O_WRONLY | O_NONBLOCK);
+		//	CriticalEnd (4)
 
 		if (dataFifo < 0) {
 			fprintf (stderr, "Error opening dataFifo\n");
@@ -115,7 +117,7 @@ int main (int argc, char** argv) {
 		}
 
 		//	CriticalStart (1) - reader-ы борятся между собой за возможность отправить pid
-		//	CriticalStart (2) - reader за право доступа к dataFifo
+		//	CriticalStart (2) - reader с writer за fd на
 		retVal = write (pidFifo, &readerPid, sizeof (readerPid));
 		//	CriticalEnd (1)
 		
